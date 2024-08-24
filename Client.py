@@ -35,7 +35,7 @@ class ALBWClientContext(CommonContext):
     last_error: str
     show_citra_connect_message: bool
 
-    DATA_VERSION: int = 0
+    DATA_VERSION: int = 1
     AP_HEADER_LOCATION: int = 0x6fe5f8
     SAVES_LOCATION: int = 0x711de8
     EVENTS_LOCATION: int = 0x70b728
@@ -85,7 +85,7 @@ class ALBWClientContext(CommonContext):
     
     def validate_rom(self) -> None:
         if self.citra.read(self.AP_HEADER_LOCATION, 4) != b"ARCH":
-            self.error("The running game was not generated with Archipelago.")
+            self.error("The running game was not patched with an Archipelago patch.")
         elif self.citra.read_u32(self.AP_HEADER_LOCATION + 0x4) < self.DATA_VERSION:
             self.error("Version mismatch: update your albwrandomizer library and re-patch.")
         elif self.citra.read_u32(self.AP_HEADER_LOCATION + 0x4) > self.DATA_VERSION:
@@ -112,8 +112,6 @@ class ALBWClientContext(CommonContext):
             self.last_error = ""
         elif self.citra.read_u32(self.save_ptr + 0xde8) != self.citra.read_u32(self.AP_HEADER_LOCATION + 0x8):
             self.error("The loaded save file was created for a different multiworld. Choose a different save file.")
-        elif self.citra.read_u32(self.save_ptr + 0xde4) != self.DATA_VERSION:
-            self.error("The loaded save file was created with a different version of albwrandomizer and is not compatible.")
 
     def validate_seed(self) -> None:
         if not self.server_connected or not self.slot_data:
@@ -214,14 +212,13 @@ class ALBWClientContext(CommonContext):
             self.ravio_scouted = True
 
     def get_item(self) -> None:
-        received_items_count = self.citra.read_u32(self.save_ptr + 0xdec)
+        received_items_count = self.citra.read_u32(self.AP_HEADER_LOCATION + 0x50)
         current_item = self.citra.read_u32(self.AP_HEADER_LOCATION + 0xc)
         if len(self.items_received) > received_items_count and current_item == 0xffffffff:
             item_code = self.items_received[received_items_count].item - albw_base_id
-            if item_code is not None:
-                item_id = item_code_table[item_code].progress[0].item_id()
-                if item_id is not None:
-                    self.citra.write_u32(self.AP_HEADER_LOCATION + 0xc, item_id)
+            item_id = item_code_table[item_code].progress[0].item_id()
+            assert item_id is not None
+            self.citra.write_u32(self.AP_HEADER_LOCATION + 0xc, item_id)
 
 async def game_watcher(ctx: ALBWClientContext) -> None:
     while not ctx.exit_event.is_set():
