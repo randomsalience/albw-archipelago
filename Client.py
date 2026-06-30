@@ -219,6 +219,8 @@ class ALBWClientContext(CommonContext):
 
         self.player_ptr = await self.interface.read_u32(self.player_singleton_ptr + 0x10)
         self.player_struct_ptr = await self.interface.read_u32(self.player_singleton_ptr + 0x14)
+        if self.player_struct_ptr == 0:
+            return
         self.player_ctrl_ptr = await self.interface.read_u32(self.player_struct_ptr + 0x48)
 
     async def get_pointers(self) -> bool:
