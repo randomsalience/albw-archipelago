@@ -62,7 +62,8 @@ class ALBWSettings(Group):
     
     class ModPath(UserFolderPath):
         """Optional: path to mods folder (either "<path-to-azahar-folder>/load/mods" or "<path-to-sd-card>/luma/titles")
-        Setting this to a non-empty value will cause the patcher to automatically install the mod."""
+        Setting this to a non-empty value will cause the patcher to automatically install the mod.
+        Do not use single backslashes in the path, use either forward slashes '/' or double backslashes '\\\\'."""
         description = "Mods Folder"
         required = False
 
