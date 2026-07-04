@@ -548,5 +548,3 @@ convenient_lorule_vanes: List[ItemData] = [
     Items.ThievesTownWV,
     Items.VacantHouseWV,
 ]
-
-APItem = new_item(RItem.LetterInABottle)
