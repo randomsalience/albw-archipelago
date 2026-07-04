@@ -379,7 +379,11 @@ class ALBWWorld(World):
             return 0
         if item == Items.Maiamai and not self.options.maiamai_mayhem:
             return 0
-        if item.itemtype == ItemType.SmallKey and self.options.small_keys == SmallKeys.option_remove:
+        if item.itemtype == ItemType.SmallKey and self.options.key_rings:
+            return 0
+        if item.itemtype == ItemType.KeyRing and not self.options.key_rings:
+            return 0
+        if item.itemtype in [ItemType.SmallKey, ItemType.KeyRing] and self.options.small_keys == SmallKeys.option_remove:
             return 0
         if item.itemtype == ItemType.BigKey and self.options.big_keys == BigKeys.option_remove:
             return 0

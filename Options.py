@@ -114,6 +114,11 @@ class Compasses(Choice):
     option_anywhere = 1
     option_startwith = 2
 
+class KeyRings(Toggle):
+    """Replace all the small keys for a dungeon with a single Key Ring for that dungeon that opens all the locked doors."""
+    """These are placed either in their own dungeons or anywhere in the multiworld, depending on the small_keys setting."""
+    display_name = "Key Rings"
+
 class LampAndNetAsWeapons(Toggle):
     """Treat the base Lamp and Net as damage-dealing weapons?
     - The red base Lamp and Net each deal 1/2 the damage of the Forgotten Sword (i.e. they're VERY BAD weapons).
@@ -255,6 +260,7 @@ class ALBWOptions(PerGameCommonOptions):
     small_keys: SmallKeys
     big_keys: BigKeys
     compasses: Compasses
+    key_rings: KeyRings
     lamp_and_net_as_weapons: LampAndNetAsWeapons
     no_progression_enemies: NoProgressionEnemies
     assured_weapon: AssuredWeapon
