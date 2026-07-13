@@ -40,6 +40,7 @@ useful = ItemClassification.useful
 progression = ItemClassification.progression
 progression_skip_balancing = ItemClassification.progression_skip_balancing
 progression_deprioritized = ItemClassification.progression_deprioritized_skip_balancing
+trap = ItemClassification.trap
 
 class ItemData:
     code: Optional[int]
@@ -423,6 +424,7 @@ class Items:
     UpgradeBow = ItemData(87, "Bow Upgrade", NiceUpgrade, progression, [new_item(RItem.UpgradeBow)])
     UpgradeLamp = ItemData(88, "Lamp Upgrade", SuperUpgrade, progression, [new_item(RItem.UpgradeLamp)])
     UpgradeNet = ItemData(89, "Bug Net Upgrade", SuperUpgrade, progression, [new_item(RItem.UpgradeNet)])
+    BeeTrap = ItemData(103, "BEEEEEEEES", Normal, trap, [new_item(RItem.BeeTrap)], 0)
     PendantOfPower = ItemData(None, "Pendant of Power", Prize, progression, [new_item(RItem.PendantOfPower)])
     PendantOfWisdom = ItemData(None, "Pendant of Wisdom", Prize, progression, [new_item(RItem.PendantOfWisdom)])
     PendantOfCourage = ItemData(None, "Pendant of Courage", Prize, progression, [new_item(RItem.PendantOfCourage)])
