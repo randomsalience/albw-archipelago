@@ -50,13 +50,21 @@ class ALBWClientContext(CommonContext):
     interface: N3DSInterface = N3DSInterface()
     interface_connected: bool
     server_connected: bool
-    initial_delay: bool
+    initial_connect: bool
+    seed: int
+    get_item_ptr: int
+    received_items_count_ptr: int
+    deathlink_flag_ptr: int
     save_validated: bool
     slot_data: Optional[Dict[str, Any]]
     save_ptr: int
     event_flags_ptr: int
     course_flags_ptr: int
     minigame_ptr: int
+    player_singleton_ptr: int
+    player_ctrl_ptr: int
+    player_struct_ptr: int
+    player_ptr: int
     event_flags: bytes
     course_flags: List[bytes]
     minigame_flags: int
@@ -77,26 +85,21 @@ class ALBWClientContext(CommonContext):
     show_citra_connect_message: bool
     show_triple_connected_message: bool
 
-    player_singleton_ptr: int
-    player_ctrl_ptr: int
-    player_struct_ptr: int
-    player_ptr: int
-
     AP_HEADER_LOCATION: int = 0x6fe5f8
     SAVES_LOCATION: int = 0x711de8
     EVENTS_LOCATION: int = 0x70b728
     COURSES_LOCATION: int = 0x70c8e0
     MINIGAME_LOCATION: int = 0x70d858
     GAME_LOCATION: int = 0x709df8
-    TASK_MAIN_GAME_VTABLE: int = 0x6d1db4
-    PLAYER_SINGLETON_LOCATION: int = 0x0070FB60  
+    PLAYER_SINGLETON_LOCATION: int = 0x70fb60
+    SYSTEM_LOCATION: int = 0x712468
     RAVIO_ITEM: List[int] = [4, 3, 11, 6, 2, 8, 9, 10, 7]
 
     def __init__(self, server_address: Optional[str], password: Optional[str]):
         super().__init__(server_address, password)
         self.interface_connected = False
         self.server_connected = False
-        self.initial_delay = True
+        self.initial_connect = True
         self.save_validated = False
         self.slot_data = None
         self.course_flags = []
@@ -153,15 +156,30 @@ class ALBWClientContext(CommonContext):
             self.last_error = error
         self.invalid = True
     
-    async def validate_rom(self) -> None:
-        if await self.interface.read(self.AP_HEADER_LOCATION, 4) != b"ARCH":
+    async def read_header(self) -> None:
+        magic = await self.interface.read(self.AP_HEADER_LOCATION, 4)
+        if magic != b"ARCH":
             self.error("The running game was not patched with an Archipelago patch.")
+            return
+
+        data_version = await self.interface.read_u32(self.AP_HEADER_LOCATION + 4)
+        self.seed = await self.interface.read_u32(self.AP_HEADER_LOCATION + 8)
+
+        name = await self.interface.read(self.AP_HEADER_LOCATION + 0x10, 0x40)
+        end = name.find(0)
+        if end != -1:
+            name = name[:end]
+        self.auth = name.decode("utf-8")
+
+        if data_version <= 2:
+            self.get_item_ptr = self.AP_HEADER_LOCATION + 0xc
+            self.received_items_count_ptr = self.AP_HEADER_LOCATION + 0x50
+            self.deathlink_flag_ptr = self.AP_HEADER_LOCATION + 0x58
         else:
-            name = await self.interface.read(self.AP_HEADER_LOCATION + 0x10, 0x40)
-            end = name.find(0)
-            if end != -1:
-                name = name[:end]
-            self.auth = name.decode("utf-8")
+            ap_data_ptr = await self.interface.read_u32(self.AP_HEADER_LOCATION + 0xc)
+            self.get_item_ptr = ap_data_ptr
+            self.received_items_count_ptr = ap_data_ptr + 4
+            self.deathlink_flag_ptr = ap_data_ptr + 8
     
     async def validate_save(self) -> None:
         display_message = not self.save_validated
@@ -175,7 +193,7 @@ class ALBWClientContext(CommonContext):
             self.last_error = ""
         elif await self.interface.read(self.save_ptr + 0xde0, 4) != b"ARCH":
             self.error("The loaded save file is not an Archipelago save file. Choose a different save file.")
-        elif await self.interface.read_u32(self.save_ptr + 0xde8) != await self.interface.read_u32(self.AP_HEADER_LOCATION + 0x8):
+        elif await self.interface.read_u32(self.save_ptr + 0xde8) != self.seed:
             self.error("The loaded save file was created for a different multiworld. Choose a different save file.")
         else:
             self.save_validated = True
@@ -185,7 +203,7 @@ class ALBWClientContext(CommonContext):
     async def validate_seed(self) -> None:
         if not self.server_connected or not self.slot_data:
             self.invalid = True
-        elif await self.interface.read_u32(self.AP_HEADER_LOCATION + 0x8) != self.slot_data["seed"]:
+        elif self.seed != self.slot_data["seed"]:
             self.error("The patch was created for a different multiworld. Make sure you are using the right patch and connecting to the correct multiworld.")
 
     async def server_auth(self, password_requested: bool = False) -> None:
@@ -235,10 +253,12 @@ class ALBWClientContext(CommonContext):
         return True
 
     async def is_in_game(self) -> bool:
-        framework = await self.interface.read_u32(self.AP_HEADER_LOCATION + 0x54)
-        if framework == 0:
+        system_ptr = await self.interface.read_u32(self.SYSTEM_LOCATION)
+        if system_ptr == 0:
             return False
-        task_mgr = await self.interface.read_u32(framework + 0x1c)
+        task_mgr = await self.interface.read_u32(system_ptr + 0x18)
+        if task_mgr == 0:
+            return False
         start_node = task_mgr + 0x44
         node = await self.interface.read_u32(start_node + 4)
         loop_count = 0
@@ -256,8 +276,8 @@ class ALBWClientContext(CommonContext):
         save_event_flags = await self.interface.read(self.save_ptr + 0x40, 0x80)
         self.event_flags = bytes_or(cur_event_flags, save_event_flags)
 
-        cur_minigame_flags = (await self.interface.read(self.minigame_ptr + 0x35, 1))[0]
-        save_minigame_flags = (await self.interface.read(self.save_ptr + 0xda5, 1))[0]
+        cur_minigame_flags = await self.interface.read_u8(self.minigame_ptr + 0x35)
+        save_minigame_flags = await self.interface.read_u8(self.save_ptr + 0xda5)
         self.minigame_flags = cur_minigame_flags | save_minigame_flags
 
         self.course_flags = []
@@ -268,7 +288,7 @@ class ALBWClientContext(CommonContext):
             self.course_flags.append(bytes_or(cur_course_flags, save_course_flags))
 
     async def read_stage(self) -> None:
-        course = (await self.interface.read(self.game_ptr + 0x18, 1))[0]
+        course = await self.interface.read_u8(self.game_ptr + 0x18)
         stage = await self.interface.read_u32(self.game_ptr + 0x1c)
 
         if course != self.course:
@@ -432,7 +452,7 @@ class ALBWClientContext(CommonContext):
         if self.received_deathlink:
             if health != 0:
                 logger.debug("Setting deathlink flag")
-                await self.interface.write_u32(self.AP_HEADER_LOCATION + 0x58, 0x1)
+                await self.interface.write_u32(self.deathlink_flag_ptr, 0x1)
                 self.sent_deathlink = True
             else:
                 logger.debug("Deathlink received but link already dead")
@@ -461,16 +481,16 @@ class ALBWClientContext(CommonContext):
         super().on_deathlink(data)
 
     async def get_item(self) -> None:
-        received_items_count = await self.interface.read_u32(self.AP_HEADER_LOCATION + 0x50)
-        current_item = await self.interface.read_u32(self.AP_HEADER_LOCATION + 0xc)
+        received_items_count = await self.interface.read_u32(self.received_items_count_ptr)
+        current_item = await self.interface.read_u32(get_item_ptr)
         if len(self.items_received) > received_items_count and current_item == 0xffffffff:
             item_code = self.items_received[received_items_count].item - albw_base_id
             item_id = item_code_table[item_code].progress[0].item_id()
             assert item_id is not None
-            await self.interface.write_u32(self.AP_HEADER_LOCATION + 0xc, item_id)
+            await self.interface.write_u32(self.get_item_ptr, item_id)
     
     async def get_null_item(self) -> None:
-        await self.interface.write_u32(self.AP_HEADER_LOCATION + 0xc, 0xffffffff)
+        await self.interface.write_u32(self.get_item_ptr, 0xffffffff)
 
     async def send_message_queue(self) -> None:
         await self.send_msgs(self.messages)
@@ -490,7 +510,7 @@ async def game_watcher(ctx: ALBWClientContext) -> None:
                     if await ctx.interface.connect(triple_addr, TITLE_ID):
                         if ctx.show_triple_connected_message:
                             logger.info("3ds connected!")
-                        ctx.initial_delay = True
+                        ctx.initial_connect = True
                         is_3ds = True
                         ctx.interface_connected = True
                         ctx.show_citra_connect_message = False
@@ -513,15 +533,13 @@ async def game_watcher(ctx: ALBWClientContext) -> None:
                         await asyncio.sleep(1)
                     else:
                         ctx.interface_connected = True
-                        ctx.initial_delay = True
+                        ctx.initial_connect = True
                         ctx.save_validated = False
                         logger.info("Emulator connected!")
             else:
-                if ctx.initial_delay:
-                    delay = 5 if is_3ds else 1
-                    await asyncio.sleep(delay)
-                    ctx.initial_delay = False
-                await ctx.validate_rom()
+                if ctx.initial_connect:
+                    await ctx.read_header()
+                    ctx.initial_connect = False
                 if not ctx.invalid:
                     await ctx.validate_seed()
                 if not ctx.invalid:
@@ -539,8 +557,6 @@ async def game_watcher(ctx: ALBWClientContext) -> None:
                             ctx.scout_hints()
                             await ctx.get_item()
                             await ctx.send_message_queue()
-                        else:
-                            ctx.initial_delay = True
                     else:
                         await ctx.get_null_item()
         except ConnectionError as e:
