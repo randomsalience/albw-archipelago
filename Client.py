@@ -55,6 +55,7 @@ class ALBWClientContext(CommonContext):
     get_item_ptr: int
     received_items_count_ptr: int
     deathlink_flag_ptr: int
+    in_game_flag_ptr: int
     save_validated: bool
     slot_data: Optional[Dict[str, Any]]
     save_ptr: int
@@ -62,8 +63,6 @@ class ALBWClientContext(CommonContext):
     course_flags_ptr: int
     minigame_ptr: int
     player_singleton_ptr: int
-    player_ctrl_ptr: int
-    player_struct_ptr: int
     player_ptr: int
     event_flags: bytes
     course_flags: List[bytes]
@@ -77,6 +76,9 @@ class ALBWClientContext(CommonContext):
     stage: int
     new_stage: bool
     inventory: List[int]
+    health: int
+    received_items_count: int
+    current_item: int
     ravio_scouted: bool
     get_hints: bool
     to_hint: List[int]
@@ -93,6 +95,7 @@ class ALBWClientContext(CommonContext):
     GAME_LOCATION: int = 0x709df8
     PLAYER_SINGLETON_LOCATION: int = 0x70fb60
     SYSTEM_LOCATION: int = 0x712468
+    TASK_MAIN_GAME_VTABLE: int = 0x6d1db4
     RAVIO_ITEM: List[int] = [4, 3, 11, 6, 2, 8, 9, 10, 7]
 
     def __init__(self, server_address: Optional[str], password: Optional[str]):
@@ -112,6 +115,9 @@ class ALBWClientContext(CommonContext):
         self.stage = -1
         self.new_stage = False
         self.inventory = [0 for _ in range(50)]
+        self.health = 1
+        self.received_items_count = 0
+        self.current_item = 0xffffffff
         self.ravio_scouted = False
         self.get_hints = False
         self.to_hint = []
@@ -163,6 +169,10 @@ class ALBWClientContext(CommonContext):
             return
 
         data_version = await self.interface.read_u32(self.AP_HEADER_LOCATION + 4)
+        if data_version <= 2:
+            self.error("The running game was patched with an older version of the apworld and is not compatible with this version.")
+            return
+
         self.seed = await self.interface.read_u32(self.AP_HEADER_LOCATION + 8)
 
         name = await self.interface.read(self.AP_HEADER_LOCATION + 0x10, 0x40)
@@ -171,15 +181,11 @@ class ALBWClientContext(CommonContext):
             name = name[:end]
         self.auth = name.decode("utf-8")
 
-        if data_version <= 2:
-            self.get_item_ptr = self.AP_HEADER_LOCATION + 0xc
-            self.received_items_count_ptr = self.AP_HEADER_LOCATION + 0x50
-            self.deathlink_flag_ptr = self.AP_HEADER_LOCATION + 0x58
-        else:
-            ap_data_ptr = await self.interface.read_u32(self.AP_HEADER_LOCATION + 0xc)
-            self.get_item_ptr = ap_data_ptr
-            self.received_items_count_ptr = ap_data_ptr + 4
-            self.deathlink_flag_ptr = ap_data_ptr + 8
+        ap_data_ptr = await self.interface.read_u32(self.AP_HEADER_LOCATION + 0xc)
+        self.get_item_ptr = ap_data_ptr
+        self.received_items_count_ptr = ap_data_ptr + 4
+        self.deathlink_flag_ptr = ap_data_ptr + 8
+        self.in_game_flag_ptr = ap_data_ptr + 0xc
     
     async def validate_save(self) -> None:
         display_message = not self.save_validated
@@ -229,49 +235,24 @@ class ALBWClientContext(CommonContext):
             self.get_hints = False
             self.to_hint = [loc.location for loc in args["locations"]
                 if loc.flags & (ItemClassification.progression | ItemClassification.useful)]
-    
-    async def get_player_ptrs(self):
-        self.player_singleton_ptr = await self.interface.read_u32(self.PLAYER_SINGLETON_LOCATION)
-        if self.player_singleton_ptr == 0:
-            return
-
-        self.player_ptr = await self.interface.read_u32(self.player_singleton_ptr + 0x10)
-        self.player_struct_ptr = await self.interface.read_u32(self.player_singleton_ptr + 0x14)
-        if self.player_struct_ptr == 0:
-            return
-        self.player_ctrl_ptr = await self.interface.read_u32(self.player_struct_ptr + 0x48)
 
     async def get_pointers(self) -> bool:
         self.event_flags_ptr = await self.interface.read_u32(self.EVENTS_LOCATION)
         self.course_flags_ptr = await self.interface.read_u32(self.COURSES_LOCATION)
         self.minigame_ptr = await self.interface.read_u32(self.MINIGAME_LOCATION)
         self.game_ptr = await self.interface.read_u32(self.GAME_LOCATION)
-        await self.get_player_ptrs()
+        self.player_singleton_ptr = await self.interface.read_u32(self.PLAYER_SINGLETON_LOCATION)
+        if self.player_singleton_ptr != 0:
+            self.player_ptr = await self.interface.read_u32(self.player_singleton_ptr + 0x10)
         if self.event_flags_ptr == 0 or self.course_flags_ptr == 0 or self.minigame_ptr == 0 or self.game_ptr == 0 \
-           or self.player_ptr == 0 or self.player_ctrl_ptr == 0 or self.player_struct_ptr == 0 or self.player_singleton_ptr == 0:
+                                        or self.player_ptr == 0 or self.player_singleton_ptr == 0:
             return False
         return True
 
     async def is_in_game(self) -> bool:
-        system_ptr = await self.interface.read_u32(self.SYSTEM_LOCATION)
-        if system_ptr == 0:
-            return False
-        task_mgr = await self.interface.read_u32(system_ptr + 0x18)
-        if task_mgr == 0:
-            return False
-        start_node = task_mgr + 0x44
-        node = await self.interface.read_u32(start_node + 4)
-        loop_count = 0
-        while node != start_node and loop_count < 100:
-            task = await self.interface.read_u32(node + 8)
-            task_vtable = await self.interface.read_u32(task)
-            if task_vtable == self.TASK_MAIN_GAME_VTABLE:
-                return True
-            node = await self.interface.read_u32(node + 4)
-            loop_count += 1
-        return False
+        return await self.interface.read_u32(self.in_game_flag_ptr) != 0
 
-    async def read_flags(self) -> None:
+    async def read_data(self) -> None:
         cur_event_flags = await self.interface.read(self.event_flags_ptr + 0x48, 0x80)
         save_event_flags = await self.interface.read(self.save_ptr + 0x40, 0x80)
         self.event_flags = bytes_or(cur_event_flags, save_event_flags)
@@ -281,13 +262,19 @@ class ALBWClientContext(CommonContext):
         self.minigame_flags = cur_minigame_flags | save_minigame_flags
 
         self.course_flags = []
-        for course in range(0, 0x20):
+        for course in range(0, 24):
             cur_course_flags = (await self.interface.read(self.course_flags_ptr + course * 0x16c + 0x160, 0x20)) \
                              + (await self.interface.read(self.course_flags_ptr + course * 0x16c + 0x1a0, 0x10))
             save_course_flags = await self.interface.read(self.save_ptr + 0x560 + course * 0x40, 0x40)
             self.course_flags.append(bytes_or(cur_course_flags, save_course_flags))
 
-    async def read_stage(self) -> None:
+        inventory = await self.interface.read(self.player_ptr + 0x434, 0xc8)
+        self.inventory = [int.from_bytes(inventory[4 * i : 4 * i + 4], "little") for i in range(50)]
+        self.maiamai_count = await self.interface.read_u8(self.player_ptr + 0x508)
+        self.health = await self.interface.read_u8(self.player_ptr + 0x598)
+        self.received_items_count = await self.interface.read_u32(self.received_items_count_ptr)
+        self.current_item = await self.interface.read_u32(self.get_item_ptr)
+
         course = await self.interface.read_u8(self.game_ptr + 0x18)
         stage = await self.interface.read_u32(self.game_ptr + 0x1c)
 
@@ -446,11 +433,8 @@ class ALBWClientContext(CommonContext):
             self.to_hint = []
     
     async def handle_deathlink(self) -> None:
-        health = await self.interface.read(self.player_ptr + 0x598, 1)
-        health = int.from_bytes(health, "little")
-
         if self.received_deathlink:
-            if health != 0:
+            if self.health != 0:
                 logger.debug("Setting deathlink flag")
                 await self.interface.write_u32(self.deathlink_flag_ptr, 0x1)
                 self.sent_deathlink = True
@@ -458,8 +442,7 @@ class ALBWClientContext(CommonContext):
                 logger.debug("Deathlink received but link already dead")
             self.received_deathlink = False
 
-
-        if health == 0 and not self.link_is_dead:
+        if self.health == 0 and not self.link_is_dead:
             if not self.sent_deathlink:
                 logger.info("Link died")
                 assert self.slot is not None
@@ -469,7 +452,7 @@ class ALBWClientContext(CommonContext):
                 logger.debug("Link died due to death link")
             self.link_is_dead = True
 
-        if health > 0 and self.link_is_dead:
+        if self.health > 0 and self.link_is_dead:
             #Back to being alive
             logger.debug(f"Link back to life")
             self.link_is_dead = False
@@ -481,10 +464,8 @@ class ALBWClientContext(CommonContext):
         super().on_deathlink(data)
 
     async def get_item(self) -> None:
-        received_items_count = await self.interface.read_u32(self.received_items_count_ptr)
-        current_item = await self.interface.read_u32(get_item_ptr)
-        if len(self.items_received) > received_items_count and current_item == 0xffffffff:
-            item_code = self.items_received[received_items_count].item - albw_base_id
+        if len(self.items_received) > self.received_items_count and self.current_item == 0xffffffff:
+            item_code = self.items_received[self.received_items_count].item - albw_base_id
             item_id = item_code_table[item_code].progress[0].item_id()
             assert item_id is not None
             await self.interface.write_u32(self.get_item_ptr, item_id)
@@ -539,8 +520,8 @@ async def game_watcher(ctx: ALBWClientContext) -> None:
             else:
                 if ctx.initial_connect:
                     await ctx.read_header()
-                    ctx.initial_connect = False
                 if not ctx.invalid:
+                    ctx.initial_connect = False
                     await ctx.validate_seed()
                 if not ctx.invalid:
                     if await ctx.is_in_game():
@@ -548,11 +529,9 @@ async def game_watcher(ctx: ALBWClientContext) -> None:
                             await asyncio.sleep(1)
                         await ctx.validate_save()
                         if not ctx.invalid and ctx.server_connected and await ctx.get_pointers():
+                            await ctx.read_data()
                             if "DeathLink" in ctx.tags:
                                 await ctx.handle_deathlink()
-                            await ctx.read_flags()
-                            await ctx.read_inventory()
-                            await ctx.read_stage()
                             ctx.check_all_locations()
                             ctx.scout_hints()
                             await ctx.get_item()
