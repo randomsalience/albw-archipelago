@@ -284,6 +284,9 @@ class ALBWWorld(World):
             "shuffle_maiamai_rewards",
             "maiamai_limit",
             "hint_ghosts",
+            "small_keys",
+            "big_keys",
+            "key_rings",
         )
         slot_data["seed"] = self.seed
         slot_data["crack_map"] = self.seed_info.get_crack_map_json()
