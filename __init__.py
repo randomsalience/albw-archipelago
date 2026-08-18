@@ -239,6 +239,9 @@ class ALBWWorld(World):
     def set_rules(self) -> None:
         self.multiworld.completion_condition[self.player] = lambda state: state.has("Triforce", self.player)
     
+    def get_pre_fill_items(self) -> List[Item]:
+        return self.pre_fill_items
+
     def pre_fill(self) -> None:
         # randomize dungeon prizes
         if self.options.randomize_dungeon_prizes:
