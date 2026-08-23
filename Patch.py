@@ -31,7 +31,10 @@ class PatchItemInfo:
         name = data.get("name", "an Archipelago item")
         player_name = data.get("player_name", "someone")
         classification = data.get("classification", 0)
-        return PatchItemInfo(name, player_name, classification, location_table[loc_name].code)
+        location_code = location_table[loc_name].code
+        if location_code is None:
+            location_code = 0
+        return PatchItemInfo(name, player_name, classification, location_code)
 
 class PatchInfo:
     version: str
