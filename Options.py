@@ -245,13 +245,13 @@ class PurplePotionBottles(Toggle):
     """Fills all Empty Bottles with a free Purple Potion."""
     display_name = "Purple Potion Bottles"
 
-class BeeTrapPercentage(Range):
-    """Choose the percentage of junk items (green, blue, and red rupees, and monster parts)
-    to be replaced by bee traps."""
-    display_name = "Bee Trap Percentage"
-    range_start = 0
-    range_end = 100
-    default = 0
+# class BeeTrapPercentage(Range):
+#     """Choose the percentage of junk items (green, blue, and red rupees, and monster parts)
+#     to be replaced by bee traps."""
+#     display_name = "Bee Trap Percentage"
+#     range_start = 0
+#     range_end = 100
+#     default = 0
 
 @dataclass
 class ALBWOptions(PerGameCommonOptions):
@@ -287,7 +287,7 @@ class ALBWOptions(PerGameCommonOptions):
     chest_size_matches_contents: ChestSizeMatchesContents
     treacherous_tower_floors: TreacherousTowerFloors
     purple_potion_bottles: PurplePotionBottles
-    bee_trap_percentage: BeeTrapPercentage
+    # bee_trap_percentage: BeeTrapPercentage
     start_inventory_from_pool: StartInventoryPool
 
     @classmethod
