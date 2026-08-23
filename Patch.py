@@ -27,6 +27,12 @@ class PatchItemInfo:
         self.classification = classification
         self.location_code = location_code
 
+    def from_json(data: Dict[str, Any], loc_name: str) -> "PatchItemInfo":
+        name = data.get("name", "an Archipelago item")
+        player_name = data.get("player_name", "someone")
+        classification = data.get("classification", 0)
+        return PatchItemInfo(name, player_name, classification, location_table[loc_name].code)
+
 class PatchInfo:
     version: str
     seed: int
@@ -93,8 +99,7 @@ def from_json(json: bytes) -> PatchInfo:
         info["player_name"],
         ALBWOptions(**options),
         info["check_map"],
-        {loc: PatchItemInfo(item["name"], item["player_name"], item["classification"], item["location_code"])
-            for loc, item in info["items"].items()},
+        {loc: PatchItemInfo.from_json(item, loc) for loc, item in info["items"].items()},
         info["hints"],
         info["bow_of_light_hint"]
     )

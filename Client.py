@@ -170,7 +170,7 @@ class ALBWClientContext(CommonContext):
 
         data_version = await self.interface.read_u32(self.AP_HEADER_LOCATION + 4)
         if data_version <= 2:
-            self.error("The running game was patched with an older version of the apworld and is not compatible with this version.")
+            self.error("The running game was patched with an older version of the apworld, you must re-patch the game.")
             return
 
         self.seed = await self.interface.read_u32(self.AP_HEADER_LOCATION + 8)
