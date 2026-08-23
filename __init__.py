@@ -110,8 +110,8 @@ class ALBWWorld(World):
         return ALBWLocation(self.player, name, loc_id, region)
     
     def get_filler_item_name(self):
-        if self.random.randrange(100) < self.options.bee_trap_percentage:
-            return Items.BeeTrap.name
+        # if self.random.randrange(100) < self.options.bee_trap_percentage:
+        #     return Items.BeeTrap.name
         return self.random.choice(self.filler_items)
     
     def generate_early(self) -> None:
@@ -294,6 +294,7 @@ class ALBWWorld(World):
         slot_data["seed"] = self.seed
         slot_data["crack_map"] = self.seed_info.get_crack_map_json()
         slot_data["vane_map"] = self.seed_info.get_vane_map_json()
+        slot_data["prize_map"] = self._get_prize_map()
         return slot_data
 
     def generate_output(self, output_directory: str) -> None:
@@ -450,3 +451,7 @@ class ALBWWorld(World):
         if self.options.lamp_and_net_as_weapons:
             weapons.extend([Items.Lamp, Items.Net])
         return self.random.choice(weapons)
+
+    def _get_prize_map(self) -> Dict[str, str]:
+        prize_location_names = [loc.name for loc in all_locations if loc.loctype == LocationType.Prize]
+        return {loc_name: self.multiworld.get_location(loc_name, self.player).item.name for loc_name in prize_location_names}
