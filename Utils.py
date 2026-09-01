@@ -34,7 +34,10 @@ def setup_lib():
         if directory.startswith("albwrandomizer"):
             path = os.path.join(tempfile.gettempdir(), directory)
             if os.path.exists(os.path.join(path, "cleanup-tag")):
-                shutil.rmtree(path)
+                try:
+                    shutil.rmtree(path)
+                except:
+                    pass
 
     apworld_path = os.path.dirname(os.path.dirname(__file__))
     if apworld_path.endswith(".apworld"):
