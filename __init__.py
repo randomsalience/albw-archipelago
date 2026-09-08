@@ -300,13 +300,17 @@ class ALBWWorld(World):
     def generate_output(self, output_directory: str) -> None:
         # Create patch info object
         check_map = self._build_check_map()
-        items = {loc.name: PatchItemInfo(
+        items = {
+            loc.name: PatchItemInfo(
                 sanitize(loc.item.name),
                 sanitize(self.multiworld.get_player_name(loc.item.player)),
                 loc.item.classification.as_flag(),
-                location_table[loc.name].code
-            ) for loc in self.multiworld.get_locations(self.player)
-            if location_table[loc.name].code is not None}
+                location_table[loc.name].code,
+                loc.item.game,
+            )
+            for loc in self.multiworld.get_locations(self.player)
+            if location_table[loc.name].code is not None
+        }
         hints = generate_hints(self.multiworld, self.player, self.options, self.random)
         bow_of_light_hint = generate_bow_of_light_hint(self.multiworld, self.player)
         patch_info = PatchInfo(PatchInfo.cur_version.as_simple_string(), self.seed, self.player_name,

@@ -234,6 +234,11 @@ class ChestSizeMatchesContents(Toggle):
     Note: Some large chests will have a reduced hitbox to prevent negative gameplay interference."""
     display_name = "Chest Size Matches Contents"
 
+class MatchExternalItemModels(Toggle):
+    """Some items from other games will have their models changed to corresponding ALBW item models
+    (e.g. keys from other games will appear as keys)."""
+    display_name = "Match External Item Models"
+
 class TreacherousTowerFloors(Range):
     """Choose how many floors the Treacherous Tower should have (2-66)."""
     display_name = "Treacherous Tower Floors"
@@ -285,6 +290,7 @@ class ALBWOptions(PerGameCommonOptions):
     swordless_mode: SwordlessMode
     hint_ghosts: HintGhosts
     chest_size_matches_contents: ChestSizeMatchesContents
+    match_external_item_models: MatchExternalItemModels
     treacherous_tower_floors: TreacherousTowerFloors
     purple_potion_bottles: PurplePotionBottles
     # bee_trap_percentage: BeeTrapPercentage

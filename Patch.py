@@ -9,6 +9,7 @@ from Utils import Version, tuplize_version, user_path
 from settings import get_settings
 from .Hints import sanitize
 from .Items import item_table
+from .ItemMatching import match_external_item
 from .Locations import location_table
 from .Options import ALBWOptions, create_randomizer_settings
 from .Utils import get_temp_path
@@ -20,21 +21,33 @@ class PatchItemInfo:
     player_name: str
     classification: int
     location_code: int
+    game_name: str
 
-    def __init__(self, name: str, player_name: str, classification: int, location_code: int):
+    def __init__(self, name: str, player_name: str, classification: int, location_code: int, game_name: str):
         self.name = name
         self.player_name = player_name
         self.classification = classification
         self.location_code = location_code
+        self.game_name = game_name
 
     def from_json(data: Dict[str, Any], loc_name: str) -> "PatchItemInfo":
         name = data.get("name", "an Archipelago item")
         player_name = data.get("player_name", "someone")
         classification = data.get("classification", 0)
+        game_name = data.get("game_name", "")
         location_code = location_table[loc_name].code
         if location_code is None:
             location_code = 0
-        return PatchItemInfo(name, player_name, classification, location_code)
+        return PatchItemInfo(name, player_name, classification, location_code, game_name)
+
+    def get_item_index(self, options: ALBWOptions) -> int:
+        if self.game_name == "A Link Between Worlds":
+            item_id = item_table[self.name].progress[0].item_id()
+            if item_id is not None:
+                return item_id
+        elif options.match_external_item_models:
+            return int(match_external_item(self.name, self.game_name))
+        return 0x49
 
 class PatchInfo:
     version: str
@@ -146,9 +159,17 @@ def patch_albw_inner(caller: ALBWProcedurePatch, rom: bytes, patch_name: str) ->
     # Load Archipelago info from the patch info
     archipelago_info = ArchipelagoInfo()
     archipelago_info.name = patch_info.player_name
-    archipelago_info.items = {sanitize(loc_name):
-        ArchipelagoItem(item.name, item.player_name, item.classification, item.location_code)
-        for loc_name, item in patch_info.items.items()}
+    archipelago_info.items = {
+        sanitize(loc_name):
+        ArchipelagoItem(
+            item.name,
+            item.player_name,
+            item.classification,
+            item.location_code,
+            item.get_item_index(patch_info.options)
+        )
+        for loc_name, item in patch_info.items.items()
+    }
 
     # Initialize seed info from the patch info
     settings = create_randomizer_settings(patch_info.options)
