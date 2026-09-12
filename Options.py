@@ -234,6 +234,11 @@ class ChestSizeMatchesContents(Toggle):
     Note: Some large chests will have a reduced hitbox to prevent negative gameplay interference."""
     display_name = "Chest Size Matches Contents"
 
+class ChangeFreestandingItemModels(Toggle):
+    """Changes the appearance of freestanding items (heart pieces and containers, small keys, silver rupees)
+    to show the randomized item at that location."""
+    display_name = "Change Freestanding Item Models"
+
 class MatchExternalItemModels(Toggle):
     """Some items from other games will have their models changed to corresponding ALBW item models
     (e.g. keys from other games will appear as keys)."""
@@ -290,6 +295,7 @@ class ALBWOptions(PerGameCommonOptions):
     swordless_mode: SwordlessMode
     hint_ghosts: HintGhosts
     chest_size_matches_contents: ChestSizeMatchesContents
+    change_freestanding_item_models: ChangeFreestandingItemModels
     match_external_item_models: MatchExternalItemModels
     treacherous_tower_floors: TreacherousTowerFloors
     purple_potion_bottles: PurplePotionBottles
@@ -324,7 +330,7 @@ def create_randomizer_settings(options: ALBWOptions) -> albwrandomizer.Settings:
     settings.boots_in_shop = False
     settings.assured_weapon = bool(options.assured_weapon.value)
     settings.chest_size_matches_contents = bool(options.chest_size_matches_contents.value)
-    settings.change_freestanding_models = False
+    settings.change_freestanding_models = bool(options.change_freestanding_item_models)
     settings.minigames_excluded = bool(options.minigames_excluded.value)
     settings.skip_big_bomb_flower = bool(options.skip_big_bomb_flower.value)
     settings.treacherous_tower_floors = options.treacherous_tower_floors.value
