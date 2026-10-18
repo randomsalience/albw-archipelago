@@ -8,6 +8,7 @@ from worlds.AutoWorld import WebWorld, World
 from BaseClasses import CollectionState, Item, ItemClassification, Location, LocationProgressType, MultiWorld, \
     Region, Tutorial
 from Fill import fill_restrictive, sweep_from_pool
+from Options import Option
 from settings import Group, UserFilePath, UserFolderPath
 from worlds.LauncherComponents import Component, SuffixIdentifier, Type, components, launch_subprocess
 from worlds.generic.Rules import set_rule
@@ -115,6 +116,13 @@ class ALBWWorld(World):
         return self.random.choice(self.filler_items)
     
     def generate_early(self) -> None:
+        # Load options from slot data when UT is regenerating
+        if self.ut_slot_data:
+            for key, val in self.ut_slot_data.items():
+                opt: Optional[Option] = getattr(self.options, key, None)
+                if opt is not None:
+                    setattr(self.options, key, opt.from_any(val))
+
         if self.options.nice_items == NiceItems.option_vanilla and self.options.shuffle_maiamai_rewards:
             print(f"Option shuffle_maiamai_rewards is not compatible with vanilla nice items. Turning off shuffle_maiamai_rewards for player {self.player_name}.")
             self.options.shuffle_maiamai_rewards.value = False
@@ -147,7 +155,7 @@ class ALBWWorld(World):
                 starting_vanes += convenient_lorule_vanes
         for vane in starting_vanes:
             self.options.start_inventory.value[vane.name] = 1
-    
+
     def create_regions(self) -> None:
         menu_region = Region("Menu", self.player, self.multiworld)
         self.multiworld.regions.append(menu_region)
@@ -269,27 +277,36 @@ class ALBWWorld(World):
         slot_data = self.options.as_dict(
             "death_link",
             "logic_mode",
+            "randomize_dungeon_prizes",
+            "progression_bosses",
             "lorule_castle_requirement",
             "pedestal_requirement",
             "nice_items",
+            "super_items",
+            "shuffle_maiamai_rewards",
+            "maiamai_limit",
+            "small_keys",
+            "big_keys",
+            "compasses",
+            "key_rings",
             "lamp_and_net_as_weapons",
             "no_progression_enemies",
+            "assured_weapon",
             "maiamai_mayhem",
             "initial_crack_state",
             "crack_shuffle",
             "minigames_excluded",
+            "skip_big_bomb_flower",
             "trials_required",
             "open_trials_door",
+            "bow_of_light_in_castle",
             "weather_vanes",
             "dark_rooms_lampless",
             "swordless_mode",
-            "chest_size_matches_contents",
-            "shuffle_maiamai_rewards",
-            "maiamai_limit",
             "hint_ghosts",
-            "small_keys",
-            "big_keys",
-            "key_rings",
+            "chest_size_matches_contents",
+            "treacherous_tower_floors",
+            "purple_potion_bottles",
         )
         slot_data["seed"] = self.seed
         slot_data["crack_map"] = self.seed_info.get_crack_map_json()
@@ -319,7 +336,7 @@ class ALBWWorld(World):
         # Write patch file
         out_file_name = self.multiworld.get_out_file_name_base(self.player)
         patch.write(os.path.join(output_directory, f"{out_file_name}{patch.patch_file_ending}"))
-    
+
     def _initial_fill(self, pools: List[Tuple[List[Item], List[str]]]) -> None:
         for itempool, _ in pools:
             for item in itempool:
@@ -455,3 +472,17 @@ class ALBWWorld(World):
     def _get_prize_map(self) -> Dict[str, str]:
         prize_location_names = [loc.name for loc in all_locations if loc.loctype == LocationType.Prize]
         return {loc_name: self.multiworld.get_location(loc_name, self.player).item.name for loc_name in prize_location_names}
+
+    # Universal Tracker
+    ut_can_gen_without_yaml: bool = True
+
+    @property
+    def ut_slot_data(self) -> dict[str, Any]:
+        if hasattr(self.multiworld, "re_gen_passthrough"):
+            return self.multiworld.re_gen_passthrough[self.game]
+        else:
+            return {}
+
+    @staticmethod
+    def interpret_slot_data(slot_data: dict[str, Any]):
+        return slot_data
