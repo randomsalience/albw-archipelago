@@ -97,6 +97,10 @@ class ALBWWorld(World):
     seed: Optional[int]
     seed_info: Optional[SeedInfo]
 
+    ut_can_gen_without_yaml = True
+    is_ut_gen = False
+    ut_prize_map = None
+
     def create_item(self, name: str, num: Optional[int] = None) -> ALBWItem:
         item_id = self.item_name_to_id[name] if name in self.item_name_to_id else None
         if not self.options.maiamai_mayhem and name == Items.Maiamai.name:
@@ -115,6 +119,50 @@ class ALBWWorld(World):
         return self.random.choice(self.filler_items)
     
     def generate_early(self) -> None:
+        # If this is UT generation, use settings stored in slot data instead of looking for a YAML.
+        re_gen_passthrough = getattr(self.multiworld, "re_gen_passthrough", {})
+        if re_gen_passthrough and self.game in re_gen_passthrough:
+            self.is_ut_gen = True
+
+            slot_data: dict[str, Any] = re_gen_passthrough[self.game]
+
+            self.options.death_link.value = slot_data["death_link"]
+            self.options.logic_mode.value = slot_data["logic_mode"]
+            self.options.lorule_castle_requirement.value = slot_data["lorule_castle_requirement"]
+            self.options.pedestal_requirement.value = slot_data["pedestal_requirement"]
+            self.options.nice_items.value = slot_data["nice_items"]
+            self.options.lamp_and_net_as_weapons.value = slot_data["lamp_and_net_as_weapons"]
+            self.options.no_progression_enemies.value = slot_data["no_progression_enemies"]
+            self.options.maiamai_mayhem.value = slot_data["maiamai_mayhem"]
+            self.options.initial_crack_state.value = slot_data["initial_crack_state"]
+            self.options.crack_shuffle.value = slot_data["crack_shuffle"]
+            self.options.minigames_excluded.value = slot_data["minigames_excluded"]
+            self.options.trials_required.value = slot_data["trials_required"]
+            self.options.open_trials_door.value = slot_data["open_trials_door"]
+            self.options.weather_vanes.value = slot_data["weather_vanes"]
+            self.options.dark_rooms_lampless.value = slot_data["dark_rooms_lampless"]
+            self.options.swordless_mode.value = slot_data["swordless_mode"]
+            self.options.chest_size_matches_contents.value = slot_data["chest_size_matches_contents"]
+            self.options.shuffle_maiamai_rewards.value = slot_data["shuffle_maiamai_rewards"]
+            self.options.maiamai_limit.value = slot_data["maiamai_limit"]
+            self.options.hint_ghosts.value = slot_data["hint_ghosts"]
+            self.options.small_keys.value = slot_data["small_keys"]
+            self.options.big_keys.value = slot_data["big_keys"]
+            self.options.key_rings.value = slot_data["key_rings"]
+            self.options.randomize_dungeon_prizes.value = slot_data["randomize_dungeon_prizes"]
+            self.options.progression_bosses.value = slot_data["progression_bosses"]
+            self.options.super_items.value = slot_data["super_items"]
+            self.options.compasses.value = slot_data["compasses"]
+            self.options.assured_weapon.value = slot_data["assured_weapon"]
+            self.options.skip_big_bomb_flower.value = slot_data["skip_big_bomb_flower"]
+            self.options.bow_of_light_in_castle.value = slot_data["bow_of_light_in_castle"]
+            self.options.treacherous_tower_floors.value = slot_data["treacherous_tower_floors"]
+            self.options.purple_potion_bottles.value = slot_data["purple_potion_bottles"]
+
+            self.seed = slot_data["seed"]
+
+            self.ut_prize_map = slot_data["prize_map"]
+
         if self.options.nice_items == NiceItems.option_vanilla and self.options.shuffle_maiamai_rewards:
             print(f"Option shuffle_maiamai_rewards is not compatible with vanilla nice items. Turning off shuffle_maiamai_rewards for player {self.player_name}.")
             self.options.shuffle_maiamai_rewards.value = False
@@ -123,17 +171,21 @@ class ALBWWorld(World):
         archipelago_info = ArchipelagoInfo()
         archipelago_info.name = self.player_name
 
-        # try crack shuffle
-        max_tries = 20
-        for num_tries in range(max_tries + 1):
-            if num_tries == max_tries:
-                print(f"Too many attempts to generate world graph for player {self.player_name}. Turning off Crack Shuffle.")
-                self.options.crack_shuffle.value = CrackShuffle.option_off
-                settings.cracksanity = Cracksanity.Off
-            self.seed = self.random.randrange(2**32)
+        if self.is_ut_gen:
+            # If this is a UT generation, the seed has already been selected.
             self.seed_info = randomize_pre_fill(self.seed, settings, archipelago_info)
-            if self.seed_info.access_check():
-                break
+        else:
+            # try crack shuffle
+            max_tries = 20
+            for num_tries in range(max_tries + 1):
+                if num_tries == max_tries:
+                    print(f"Too many attempts to generate world graph for player {self.player_name}. Turning off Crack Shuffle.")
+                    self.options.crack_shuffle.value = CrackShuffle.option_off
+                    settings.cracksanity = Cracksanity.Off
+                self.seed = self.random.randrange(2**32)
+                self.seed_info = randomize_pre_fill(self.seed, settings, archipelago_info)
+                if self.seed_info.access_check():
+                    break
 
         # add starting weather vanes
         starting_vanes = []
@@ -201,7 +253,20 @@ class ALBWWorld(World):
                 source_region.connect(target_region, name=name, rule=
                     lambda state, source_region_name=source_region_name, target_region_name=target_region_name:
                     self.seed_info.can_traverse(source_region_name, target_region_name, self._convert_state(state)))
-    
+
+        # UT's generation does not create the randomized prizes event items since it doesn't run create items/prefill
+        # This is a problem since without the event items placed at the end of dungeons, UT would never know that the
+        # player could access the locations that stem from the prize.
+        # The following code creates the items and then instead of calling prefill (since that would randomly place
+        # the prizes), it uses the prize map to match the true generation's placements.
+        if self.is_ut_gen:
+            self.create_items()
+            if self.options.randomize_dungeon_prizes:
+                prize_itempool = [item for item in self.pre_fill_items if item_table[item.name].itemtype == ItemType.Prize]
+                inverted_prize_map = {v: k for k, v in self.ut_prize_map.items()}
+                for prize in prize_itempool:
+                    self._initial_fill([([prize],[inverted_prize_map[prize.name]])])
+
     def create_items(self) -> None:
         self.filler_items = []
         for item in all_items:
@@ -290,6 +355,15 @@ class ALBWWorld(World):
             "small_keys",
             "big_keys",
             "key_rings",
+            "randomize_dungeon_prizes",
+            "progression_bosses",
+            "super_items",
+            "compasses",
+            "assured_weapon",
+            "skip_big_bomb_flower",
+            "bow_of_light_in_castle",
+            "treacherous_tower_floors",
+            "purple_potion_bottles"
         )
         slot_data["seed"] = self.seed
         slot_data["crack_map"] = self.seed_info.get_crack_map_json()
